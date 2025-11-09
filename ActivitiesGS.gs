@@ -88,3 +88,4 @@ function test_getActivitiesForContext() {
   const result = getActivitiesForContext("CAND0001", "JOB0001");
   Logger.log(result);
 }
+
