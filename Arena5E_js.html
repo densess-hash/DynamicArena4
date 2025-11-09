@@ -8,12 +8,21 @@ window.addEventListener('load', function(){
     A.loadCallListReal = function(callListId){
       console.log('🧩 5E+: Resolving CallList', callListId);
 
+      // ✅ the google.script.run call STARTS here
       google.script.run.withSuccessHandler(function(list){
-        if(!list){ console.error('❌ No CallList for', callListId); return; }
+        if(!list){
+          console.error('❌ No CallList for', callListId);
+          return;
+        }
+
+        // ✅ only here "list" exists, not before
+        if (!list.Name && list.CallListName)
+          list.Name = list.CallListName;
 
         // --- Normalize IDs --------------------------------------------------
         var jobId = String(list.JobID || '').trim();
-        if(/^J\d{3}$/.test(jobId)) jobId = 'JOB0' + jobId.replace(/\D/g,''); // turn J001→JOB0001
+        if(/^J\d{3}$/.test(jobId))
+          jobId = 'JOB0' + jobId.replace(/\D/g,''); // turn J001→JOB0001
         var candStr = String(list.CandidateIDs || '').trim();
 
         // --- Update Arena state --------------------------------------------
@@ -37,8 +46,9 @@ window.addEventListener('load', function(){
           console.log('🏢 Bundle:', bundle);
           A.state.job = bundle.job;
           A.state.company = bundle.company || null;
-          A.renderJob(A.state.job);          // refresh left column
-          if(A.state.company) A.renderCompanyPanel && A.renderCompanyPanel(A.state.company);
+          A.renderJob(A.state.job); // refresh left column
+          if(A.state.company)
+            A.renderCompanyPanel && A.renderCompanyPanel(A.state.company);
         }).getJobCompanyBundle(jobId);
 
         // --- 2️⃣ Load Candidates -------------------------------------------
