@@ -456,3 +456,30 @@ function testGetCallListById(){
   Logger.log(getCallListById('CL001'));
 }
 
+function smokeArena() {
+  const cl = getAllCallLists();
+  Logger.log('CallLists: ' + cl.length);
+  cl.forEach(function(item, idx){
+    Logger.log('--- ['+(idx+1)+'] ' + item.CallListID + ' — ' + (item.Name||'') + ' — JobID='+ item.JobID);
+
+    // Deep row
+    var row = getCallListById(item.CallListID);
+    Logger.log('  getCallListById -> ' + JSON.stringify(row));
+
+    // Bundle
+    var jobId = row && row.JobID;
+    var bundle = jobId ? getJobCompanyBundle(jobId) : null;
+    Logger.log('  getJobCompanyBundle('+ jobId +') -> job? ' + !!(bundle && bundle.job) + ', company? ' + !!(bundle && bundle.company));
+
+    // Candidates
+    var ids = [];
+    if (row && row.CandidateIDs) {
+      ids = String(row.CandidateIDs).split(/[;,]/).map(function(s){ return s.trim(); }).filter(Boolean);
+    }
+    Logger.log('  CandidateIDs: ' + ids.length + ' ' + ids.join(', '));
+    if (ids.length) {
+      var cands = getCandidatesByIds(ids);
+      Logger.log('  getCandidatesByIds -> ' + cands.length);
+    }
+  });
+}
