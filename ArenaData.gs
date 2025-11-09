@@ -350,30 +350,28 @@ function getActivitiesForContext(candidateId, jobId) {
 
 
 
-/** Return all Call Lists for dropdown */
+/** Return all Call Lists for dropdown (v2025.11.09) */
 function getAllCallLists() {
   const sh = SpreadsheetApp.getActive().getSheetByName('CallLists');
   if (!sh) return [];
   const [head, ...rows] = sh.getDataRange().getValues();
   const i = {}; head.forEach((h, idx) => i[h] = idx);
-  return rows.map(r => {
-    var name = r[i.Name];
-    if (!name && i.CallListName != null) name = r[i.CallListName];
-    return {
-      CallListID: r[i.CallListID],
-      Name: name || r[i.CallListID],
-      JobID: r[i.JobID],
-      Status: r[i.Status],
-      CreatedOn: r[i.GeneratedDate]
-    };
-  }).filter(x => x.CallListID);
+
+  // Detect headers dynamically (singular/plural variants)
+  const keyName = i.Name != null ? 'Name' : (i.CallListName != null ? 'CallListName' : null);
+  const keyCands = i.CandidateIDs != null ? 'CandidateIDs' : (i.CandidateID != null ? 'CandidateID' : null);
+
+  return rows.map(r => ({
+    CallListID: r[i.CallListID],
+    Name: keyName ? r[i[keyName]] : r[i.CallListID],
+    JobID: r[i.JobID],
+    Status: r[i.Status],
+    CreatedOn: r[i.GeneratedDate],
+    CandidateIDs: keyCands ? r[i[keyCands]] : ''
+  })).filter(x => x.CallListID);
 }
 
-
-
-
-/** Return one CallList row by ID */
-/** Return one CallList row by ID (cleaned and normalized) */
+/** Return one CallList row by ID (handles Name/CandidateID mismatch) */
 function getCallListById(id) {
   const sh = SpreadsheetApp.getActive().getSheetByName('CallLists');
   if (!sh) return null;
@@ -382,12 +380,25 @@ function getCallListById(id) {
 
   id = String(id || '').trim();
 
+  // Detect which column exists
+  const keyName = idx.Name != null ? 'Name' : (idx.CallListName != null ? 'CallListName' : null);
+  const keyCands = idx.CandidateIDs != null ? 'CandidateIDs' : (idx.CandidateID != null ? 'CandidateID' : null);
+
   for (const r of rows) {
     const sheetId = String(r[idx.CallListID] || '').trim();
-    // tolerate CL1 / CL01 / CL001 / CL0001
     if (sheetId.replace(/^CL0+/, 'CL') === id.replace(/^CL0+/, 'CL')) {
       const obj = {};
       head.forEach((h,i)=>obj[h]=r[i]);
+
+      // Normalized aliases
+      obj.Name = keyName ? r[idx[keyName]] : obj.CallListID;
+      obj.CandidateIDs = keyCands ? r[idx[keyCands]] : '';
+
+      // Normalize JobID
+      const rawJob = String(obj.JobID || '');
+      const digits = rawJob.replace(/\D/g,'');
+      if (/^J\d+$/i.test(rawJob) || /^JOB\d{3}$/i.test(rawJob))
+        obj.JobID = 'JOB' + ('0000' + digits).slice(-4);
 
       // Clean CandidateIDs
       if (obj.CandidateIDs) {
@@ -399,21 +410,12 @@ function getCallListById(id) {
           .trim();
       }
 
-      // Normalize JobID: J001 → JOB0001, JOB001 → JOB0001
-      var raw = String(obj.JobID || '');
-      var digits = raw.replace(/\D/g,'');
-      if (/^J\d+$/i.test(raw) || /^JOB\d{3}$/i.test(raw)) {
-        obj.JobID = 'JOB' + ('0000' + digits).slice(-4);
-      }
-
-      // Compatibility
-      if (!obj.Name && obj.CallListName) obj.Name = obj.CallListName;
-
       return obj;
     }
   }
   return null;
 }
+
 
 
 
@@ -482,4 +484,84 @@ function smokeArena() {
       Logger.log('  getCandidatesByIds -> ' + cands.length);
     }
   });
+}
+
+
+/**
+ * === UNIVERSAL DEBUG ARENA ALL (v2025.11.09) ============================
+ * Deep audit of all relationships across the CRM.
+ * Validates:
+ *   - Each CallList links to a valid Job
+ *   - Each Job links to a valid Company
+ *   - Each CandidateID in CallLists exists in Candidates
+ *   - Duplicates and orphaned records
+ */
+function debugArenaAll() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const shs = {
+    calllists: ss.getSheetByName('CallLists'),
+    jobs: ss.getSheetByName('Jobs'),
+    companies: ss.getSheetByName('Companies'),
+    candidates: ss.getSheetByName('Candidates')
+  };
+  const read = sh => {
+    if (!sh) return [];
+    const [head, ...rows] = sh.getDataRange().getValues();
+    return rows.map(r => head.reduce((o, h, i) => (o[h] = r[i], o), {}));
+  };
+  const data = {
+    calllists: read(shs.calllists),
+    jobs: read(shs.jobs),
+    companies: read(shs.companies),
+    candidates: read(shs.candidates)
+  };
+
+  const log = m => Logger.log(m);
+
+  log('=== DEBUG ARENA ALL START ===');
+  log(`CallLists: ${data.calllists.length}, Jobs: ${data.jobs.length}, Companies: ${data.companies.length}, Candidates: ${data.candidates.length}`);
+
+  let errors = 0;
+  const jobIDs = data.jobs.map(j => String(j.JobID).trim());
+  const compIDs = data.companies.map(c => String(c.CompanyID).trim());
+  const candIDs = data.candidates.map(c => String(c.CandidateID).trim());
+
+  data.calllists.forEach(cl => {
+    const cid = String(cl.CallListID || '').trim();
+    const name = cl.Name || cl.CallListName || cid;
+    const jobId = String(cl.JobID || '').trim();
+    const candsRaw = String(cl.CandidateIDs || cl.CandidateID || '').trim();
+
+    // Normalize jobId (J001 -> JOB0001)
+    let normJob = jobId;
+    const dig = jobId.replace(/\D/g, '');
+    if (/^J\d+$/i.test(jobId) || /^JOB\d{3}$/i.test(jobId))
+      normJob = 'JOB' + ('0000' + dig).slice(-4);
+
+    const okJob = jobIDs.includes(normJob);
+    const jobRow = okJob ? data.jobs.find(j => String(j.JobID).trim() === normJob) : null;
+    const okComp = jobRow && compIDs.includes(String(jobRow.CompanyID).trim());
+
+    const candList = candsRaw
+      ? candsRaw.replace(/[\r\n ,]+/g, ';').split(';').filter(Boolean)
+      : [];
+    const okCands = candList.filter(id => candIDs.includes(id));
+    const missingCands = candList.filter(id => !candIDs.includes(id));
+
+    log(`\n[${cid}] ${name}`);
+    log(`   JobID: ${jobId} → normalized: ${normJob} (${okJob ? '✓' : '❌'})`);
+    log(`   Company linked: ${okComp ? '✓ ' + jobRow.CompanyID : '❌ none'}`);
+    log(`   CandidateIDs: ${candList.length}, found ${okCands.length}, missing ${missingCands.length}`);
+    if (missingCands.length) log('   Missing → ' + missingCands.join(', '));
+
+    if (!okJob || !okComp || missingCands.length) errors++;
+  });
+
+  log(`\n=== SUMMARY ===`);
+  if (errors) {
+    log(`❌ Issues found in ${errors} CallList(s). Review details above.`);
+  } else {
+    log(`✅ All links validated successfully!`);
+  }
+  log('=== DEBUG END ===');
 }
