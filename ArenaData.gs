@@ -356,14 +356,19 @@ function getAllCallLists() {
   if (!sh) return [];
   const [head, ...rows] = sh.getDataRange().getValues();
   const i = {}; head.forEach((h, idx) => i[h] = idx);
-  return rows.map(r => ({
-    CallListID: r[i.CallListID],
-    Name: r[i.Name],
-    JobID: r[i.JobID],
-    Status: r[i.Status],
-    CreatedOn: r[i.GeneratedDate]
-  })).filter(x => x.CallListID);
+  return rows.map(r => {
+    var name = r[i.Name];
+    if (!name && i.CallListName != null) name = r[i.CallListName];
+    return {
+      CallListID: r[i.CallListID],
+      Name: name || r[i.CallListID],
+      JobID: r[i.JobID],
+      Status: r[i.Status],
+      CreatedOn: r[i.GeneratedDate]
+    };
+  }).filter(x => x.CallListID);
 }
+
 
 
 
@@ -384,31 +389,32 @@ function getCallListById(id) {
       const obj = {};
       head.forEach((h,i)=>obj[h]=r[i]);
 
-      // 🧹 Clean CandidateIDs
+      // Clean CandidateIDs
       if (obj.CandidateIDs) {
         obj.CandidateIDs = String(obj.CandidateIDs)
-          .replace(/^"+|"+$/g,'')       // remove extra quotes
-          .replace(/[\r\n]+/g,';')      // newlines → ;
-          .replace(/[ ,]+/g,';')        // spaces/commas → ;
-          .replace(/;+$/,'')            // remove trailing ;
+          .replace(/^"+|"+$/g,'')
+          .replace(/[\r\n]+/g,';')
+          .replace(/[ ,]+/g,';')
+          .replace(/;+$/,'')
           .trim();
       }
 
-         // 🧹 Normalize JobID (J001 → JOB0001)
-      if (obj.JobID && /^J\d+$/i.test(obj.JobID)) {
-        const num = obj.JobID.replace(/\D/g,'');
-        obj.JobID = 'JOB' + ('0000' + num).slice(-4);
+      // Normalize JobID: J001 → JOB0001, JOB001 → JOB0001
+      var raw = String(obj.JobID || '');
+      var digits = raw.replace(/\D/g,'');
+      if (/^J\d+$/i.test(raw) || /^JOB\d{3}$/i.test(raw)) {
+        obj.JobID = 'JOB' + ('0000' + digits).slice(-4);
       }
 
-      // Compatibility: Arena expects "Name"
+      // Compatibility
       if (!obj.Name && obj.CallListName) obj.Name = obj.CallListName;
 
       return obj;
-
     }
   }
   return null;
 }
+
 
 
 /** Return Job + Company bundle */
