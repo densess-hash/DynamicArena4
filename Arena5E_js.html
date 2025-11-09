@@ -1,0 +1,65 @@
+<script>
+/* === ARENA · Phase 5E+ — Dynamic CallList → Job/Company/Candidate Resolver === */
+window.addEventListener('load', function(){
+  if(!window.Arena){ console.warn('⚠️ Arena base not found'); return; }
+
+  (function(A){
+
+    A.loadCallListReal = function(callListId){
+      console.log('🧩 5E+: Resolving CallList', callListId);
+
+      google.script.run.withSuccessHandler(function(list){
+        if(!list){ console.error('❌ No CallList for', callListId); return; }
+
+        // --- Normalize IDs --------------------------------------------------
+        var jobId = String(list.JobID || '').trim();
+        if(/^J\d{3}$/.test(jobId)) jobId = 'JOB0' + jobId.replace(/\D/g,''); // turn J001→JOB0001
+        var candStr = String(list.CandidateIDs || '').trim();
+
+        // --- Update Arena state --------------------------------------------
+        A.state.callList = list;
+        A.state.callListID = list.CallListID;
+        A.state.jobID = jobId;
+        A.state.candidateIDs = candStr
+          .replace(/[, ]+/g,';')
+          .split(';')
+          .filter(Boolean);
+
+        console.log('📋 CallList:', list);
+        console.log('🧠 jobID:', jobId, ' | candidates:', A.state.candidateIDs.length);
+
+        // --- 1️⃣ Load Job + Company ----------------------------------------
+        google.script.run.withSuccessHandler(function(bundle){
+          if(!bundle || !bundle.job){
+            console.warn('⚠️ No job found for', jobId);
+            return;
+          }
+          console.log('🏢 Bundle:', bundle);
+          A.state.job = bundle.job;
+          A.state.company = bundle.company || null;
+          A.renderJob(A.state.job);          // refresh left column
+          if(A.state.company) A.renderCompanyPanel && A.renderCompanyPanel(A.state.company);
+        }).getJobCompanyBundle(jobId);
+
+        // --- 2️⃣ Load Candidates -------------------------------------------
+        if(A.state.candidateIDs.length){
+          google.script.run.withSuccessHandler(function(cands){
+            console.log('👥 Candidates fetched:', cands.length);
+            A.state.candidates = cands;
+            if(cands.length){
+              A.state.index = 0;
+              A.state.candidate = cands[0];
+              A.renderCandidate(cands[0]);
+              A.renderActions(cands[0], A.state.recruiter);
+              A._updateCounter();
+            }
+          }).getCandidatesByIds(A.state.candidateIDs);
+        }
+
+      }).getCallListById(callListId);
+    };
+
+    console.log('✅ Arena · Phase 5E+ dynamic resolver loaded');
+  })(window.Arena);
+});
+</script>
