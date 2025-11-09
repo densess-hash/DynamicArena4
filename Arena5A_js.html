@@ -69,8 +69,9 @@ window.addEventListener('load', function () {
     function updateTopbarListBadge() {
       var b = document.getElementById('a5a-list-switch');
       if (!b) return;
-      var name = (A.state.activeList && (A.state.activeList.CallListName || A.state.activeList.CallListID)) || 'Select Call List';
-      b.textContent = '📋 ' + name;
+   var label = item.Name || item.CallListName || item.CallListID;
+opt.textContent = label;
+
     }
 
     /* ------------------------ Selector Modal ------------------------- */
@@ -111,9 +112,12 @@ window.addEventListener('load', function () {
       };
 
       // Load lists
-      google.script.run.withSuccessHandler(function (lists) {
-        renderLists(lists || []);
-      }).getCallLists();
+// ✅ Load lists from the new robust reader
+google.script.run.withSuccessHandler(function (lists) {
+  console.log('✅ 5A overlay loaded', (lists || []).length, 'lists');
+  renderLists(lists || []);
+}).getAllCallLists();
+
 
       function renderLists(lists) {
         var grid = document.getElementById('a5a-grid');
