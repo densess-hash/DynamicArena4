@@ -1,0 +1,77 @@
+<script>
+/* === ARENA · Phase 5D+ — Real Call Lists + Diagnostic Hooks (ES5-safe) === */
+window.addEventListener('load', function(){
+  if(!window.Arena){
+    console.error('❌ Arena base not found; cannot attach CallLists menu.');
+    return;
+  }
+
+  (function(A){
+    console.log('🧩 Phase 5D+: initializing real CallLists menu…');
+
+    /* ---------- Locate dropdown ---------- */
+    var sel = document.getElementById('arena-calllist');
+    if(!sel){
+      console.warn('⚠️ No <select id="arena-calllist"> element found. Create one in your header.');
+      return;
+    }
+
+    /* ---------- Clear + placeholder ---------- */
+    sel.innerHTML = '<option>Loading Call Lists…</option>';
+
+    /* ---------- Backend call ---------- */
+    google.script.run
+      .withSuccessHandler(function(lists){
+        try {
+          console.log('✅ CallLists received:', lists);
+          if(!lists || !lists.length){
+            sel.innerHTML = '<option>No Call Lists Found</option>';
+            return;
+          }
+
+          var html = '<option value="">— Select Call List —</option>';
+          for(var i=0;i<lists.length;i++){
+            var l = lists[i];
+            html += '<option value="'+l.CallListID+'">'+(l.Name || l.CallListID)+' ('+(l.Status || '—')+')</option>';
+          }
+          sel.innerHTML = html;
+
+          console.log('📋 Dropdown populated with', lists.length, 'items.');
+        } catch(err){
+          console.error('💥 Error building dropdown:', err);
+          sel.innerHTML = '<option>Error loading lists</option>';
+        }
+      })
+      .withFailureHandler(function(e){
+        console.error('❌ getAllCallLists failed:', e);
+        sel.innerHTML = '<option>Error retrieving lists</option>';
+      })
+      .getAllCallLists();
+
+    /* ---------- Selection handler ---------- */
+    sel.onchange = function(){
+      var id = sel.value;
+      if(!id){
+        console.log('ℹ️ No CallList selected');
+        return;
+      }
+      console.log('🔗 Selected CallList:', id);
+      A.state.callListID = id;
+
+      /* Load candidates + job + company */
+      if(typeof A.loadCallListReal === 'function'){
+        console.log('🚀 Launching A.loadCallListReal for', id);
+        A.loadCallListReal(id);
+      } else {
+        console.warn('⚠️ A.loadCallListReal not yet defined. Using fallback stub.');
+        // --- fallback mock ---
+        google.script.run.withSuccessHandler(function(rows){
+          console.log('Mock candidate data loaded for', id, rows);
+        }).getCandidatesByCallList && google.script.run.getCandidatesByCallList(id);
+      }
+    };
+
+    console.log('✅ Arena · Phase 5D+ fully initialized');
+  })(window.Arena);
+});
+</script>
