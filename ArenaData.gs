@@ -368,20 +368,48 @@ function getAllCallLists() {
 
 
 /** Return one CallList row by ID */
+/** Return one CallList row by ID (cleaned and normalized) */
 function getCallListById(id) {
   const sh = SpreadsheetApp.getActive().getSheetByName('CallLists');
   if (!sh) return null;
   const [head, ...rows] = sh.getDataRange().getValues();
-  const i = {}; head.forEach((h, idx) => i[h] = idx);
+  const idx = {}; head.forEach((h,i)=>idx[h]=i);
+
+  id = String(id || '').trim();
+
   for (const r of rows) {
-    if (String(r[i.CallListID]) === String(id)) {
+    const sheetId = String(r[idx.CallListID] || '').trim();
+    // tolerate CL1 / CL01 / CL001 / CL0001
+    if (sheetId.replace(/^CL0+/, 'CL') === id.replace(/^CL0+/, 'CL')) {
       const obj = {};
-      head.forEach((h, idx) => obj[h] = r[idx]);
+      head.forEach((h,i)=>obj[h]=r[i]);
+
+      // 🧹 Clean CandidateIDs
+      if (obj.CandidateIDs) {
+        obj.CandidateIDs = String(obj.CandidateIDs)
+          .replace(/^"+|"+$/g,'')       // remove extra quotes
+          .replace(/[\r\n]+/g,';')      // newlines → ;
+          .replace(/[ ,]+/g,';')        // spaces/commas → ;
+          .replace(/;+$/,'')            // remove trailing ;
+          .trim();
+      }
+
+         // 🧹 Normalize JobID (J001 → JOB0001)
+      if (obj.JobID && /^J\d+$/i.test(obj.JobID)) {
+        const num = obj.JobID.replace(/\D/g,'');
+        obj.JobID = 'JOB' + ('0000' + num).slice(-4);
+      }
+
+      // Compatibility: Arena expects "Name"
+      if (!obj.Name && obj.CallListName) obj.Name = obj.CallListName;
+
       return obj;
+
     }
   }
   return null;
 }
+
 
 /** Return Job + Company bundle */
 function getJobCompanyBundle(jobId){
@@ -415,5 +443,10 @@ function getCandidatesByIds(ids){
     .map(r=>{
       const o={}; head.forEach((h,idx)=>o[h]=r[idx]); return o;
     });
+}
+
+
+function testGetCallListById(){
+  Logger.log(getCallListById('CL001'));
 }
 
